@@ -39,9 +39,7 @@
       ]
     ],
     "extra": {
-      "eas": {
-        "projectId": "jarvis-coach-local"
-      }
+      "eas": {}
     }
   }
 }
