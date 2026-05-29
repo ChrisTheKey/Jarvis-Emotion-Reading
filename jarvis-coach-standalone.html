@@ -215,6 +215,9 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:system-
     </div>
 
     <div id="loading"><span>Jarvis denkt</span><span class="dots"><span>.</span><span>.</span><span>.</span></span></div>
+    <div id="tts-activate-banner" style="background:#1a2a1a;border:1px solid #2a5a2a;color:#7ae07a;padding:10px 14px;font-size:13px;border-radius:6px;margin:0 12px 6px;cursor:pointer;text-align:center;line-height:1.5" onclick="warmupTTS()">
+      🔊 <strong>Ton aktivieren</strong> — einmal hier tippen, damit Jarvis sprechen kann
+    </div>
     <div id="err-banner"></div>
     <div id="key-warn">Kein API-Key. Bitte in den Einstellungen eintragen.</div>
     <div id="https-notice">🔒 <strong>Mikrofon braucht HTTPS.</strong><br>
@@ -520,6 +523,20 @@ function stopSpeech(){
   if(ttsOk) window.speechSynthesis.cancel();
   setSpeaking(false);
 }
+/* Warm up speech synthesis — must be called synchronously from a user gesture.
+   Chrome Android blocks speechSynthesis from async/setTimeout context.
+   Calling a volume-0 utterance during a click event "unlocks" subsequent calls. */
+let ttsWarmedUp=false;
+function warmupTTS(){
+  if(!ttsOk||ttsWarmedUp) return;
+  ttsWarmedUp=true;
+  const u=new SpeechSynthesisUtterance(' ');
+  u.volume=0;u.lang='de-DE';
+  const v=deVoice();if(v)u.voice=v;
+  window.speechSynthesis.speak(u);
+  // Hide the "activate audio" banner
+  document.getElementById('tts-activate-banner').style.display='none';
+}
 function setSpeaking(b){
   S.speaking=b;
   ttsStopBtn.classList.toggle('v',b);
@@ -774,7 +791,7 @@ async function sendText(text){
     const reply=await callAPI(S.msgs);
     const aMsg={id:uid(),role:'assistant',content:reply,ts:Date.now()};
     S.msgs.push(aMsg);appendMsg(aMsg);upsertConv();
-    if(S.set.tts) setTimeout(()=>speakFire(reply),200);
+    if(S.set.tts) speakFire(reply);
   }catch(e){
     showErr(apiErr(e));
     S.msgs.pop();
@@ -799,7 +816,7 @@ function newConv(){
 ════════════════════════════════════════════════════════════ */
 document.querySelectorAll('.nav-btn').forEach(b=>b.addEventListener('click',()=>setView(b.dataset.view)));
 
-sendBtn.addEventListener('click',()=>{const t=chatInput.value.trim();if(t)sendText(t)});
+sendBtn.addEventListener('click',()=>{warmupTTS();const t=chatInput.value.trim();if(t)sendText(t)});
 chatInput.addEventListener('input',()=>{autoResize();updateSendBtn()});
 chatInput.addEventListener('keydown',e=>{
   if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();const t=chatInput.value.trim();if(t&&!S.loading)sendText(t)}
@@ -807,11 +824,12 @@ chatInput.addEventListener('keydown',e=>{
 
 // Mic button → start voice conversation
 micBtn.addEventListener('click',()=>{
+  warmupTTS();
   if(S.vcActive) stopVC();
   else startVC();
 });
 // Welcome screen "Gespräch starten" button
-startVoice.addEventListener('click',startVC);
+startVoice.addEventListener('click',()=>{warmupTTS();startVC();});
 
 // TTS stop
 ttsStopBtn.addEventListener('click',stopSpeech);
@@ -848,7 +866,9 @@ modelGrp.querySelectorAll('.ri').forEach(item=>{
 });
 ttsTog.addEventListener('click',()=>{
   S.set.tts=!S.set.tts;ttsTog.classList.toggle('on',S.set.tts);
-  if(!S.set.tts)stopSpeech();saveSettings();
+  if(!S.set.tts){stopSpeech();document.getElementById('tts-activate-banner').style.display='none';}
+  else if(!ttsWarmedUp){document.getElementById('tts-activate-banner').style.display='block';}
+  saveSettings();
 });
 histTog.addEventListener('click',()=>{
   S.set.hist=!S.set.hist;histTog.classList.toggle('on',S.set.hist);saveSettings();
@@ -875,6 +895,11 @@ loadStorage();
 if(initRecog()){
   S.voiceOk=true;
   micBtn.style.display='flex';
+}
+
+// Hide TTS banner if TTS not supported
+if(!ttsOk||!S.set.tts){
+  document.getElementById('tts-activate-banner').style.display='none';
 }
 
 syncSettings();
